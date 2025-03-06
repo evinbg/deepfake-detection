@@ -87,13 +87,36 @@ def extract_landmarks(cropped_face):
     rects = dlib.rectangle(0, 0, 224, 224)
     shape = predictor(gray_face, rects)
     landmarks = np.array([[p.x, p.y] for p in shape.parts()])
-    return landmarks.flatten()
+    return landmarks
 
+def compute_geometric_features(landmarks):
+    """Compute geometric distances between key facial landmarks."""
+    # Reshape flattened landmarks into (68, 2) array
+    points = landmarks.reshape((68, 2))
+    
+    # Example distances
+    eye_distance = np.linalg.norm(points[36] - points[45])  # Eye corners
+    mouth_width = np.linalg.norm(points[48] - points[54])   # Mouth corners
+    nose_to_chin = np.linalg.norm(points[30] - points[8])   # Nose tip to chin
+    
+    # Return as a feature vector
+    return np.array([eye_distance, mouth_width, nose_to_chin])
 
-def extract_vgg16_features(frames, video_file):
+def compute_motion_vectors(landmarks_sequence):
+    """Compute motion vectors from a sequence of landmarks."""
+    motion_vectors = []
+    for i in range(1, len(landmarks_sequence)):
+        prev = landmarks_sequence[i - 1]
+        curr = landmarks_sequence[i]
+        motion = curr - prev  # Calculate delta (dx, dy) for each point
+        motion_vectors.append(motion.flatten())  # Flatten to a single array
+    return np.array(motion_vectors)
+
+def extract_features(frames, video_file):
     """Extract VGG16 spatial features and dlib landmarks for each cropped face."""
     spatial_features = []
-    temporal_features = []
+    landmarks_sequence = []
+    geometric_features = []
 
     for idx, frame in enumerate(frames):
         face = detect_and_crop_face(frame, video_file, idx)
@@ -107,16 +130,26 @@ def extract_vgg16_features(frames, video_file):
 
             # Extract dlib landmarks for temporal features
             landmarks = extract_landmarks(face)
-            temporal_features.append(landmarks)
+            landmarks_sequence.append(landmarks)
 
-    return np.array(spatial_features), np.array(temporal_features)
+            # Compute geometric features (e.g., distances between eyes, mouth, etc.)
+            geo_features = compute_geometric_features(landmarks)
+            geometric_features.append(geo_features)
+
+    if len(landmarks_sequence) == frames_to_extract:
+        # Compute motion vectors if all frames have landmarks
+        motion_vectors = compute_motion_vectors(landmarks_sequence)
+        return np.array(spatial_features), motion_vectors, np.array(geometric_features)
+    else:
+        return np.array(spatial_features), None, None
 
 def process_videos(video_dir, label, max_videos):
     """Process videos to extract features and save them."""
     video_files = [f for f in os.listdir(video_dir) if f.endswith('.mp4')]
     video_files = video_files[:max_videos]
     spatial_data = []
-    temporal_data = []
+    motion_data = []
+    geometric_data = []
     labels = []
     
     for video_file in video_files:
@@ -128,30 +161,35 @@ def process_videos(video_dir, label, max_videos):
             print(f"Skipping {video_file}, not enough frames.")
             continue
         
-        spatial_features, temporal_features = extract_vgg16_features(frames, video_file)
-        if spatial_features.size > 0 and temporal_features.size > 0:
+        spatial_features, motion_vectors, geometric_features = extract_features(frames, video_file)
+        if spatial_features.size > 0 and motion_vectors is not None and geometric_features is not None:
             spatial_data.append(spatial_features)
-            temporal_data.append(temporal_features)
+            motion_data.append(motion_vectors)
+            geometric_data.append(geometric_features)
             labels.append(label)
     
-    return spatial_data, temporal_data, labels
+    return spatial_data, motion_data, geometric_data, labels
 
 
 # Extract features for real and fake videos
 print("Extracting features from real videos")
-real_spatial, real_temporal, real_labels = process_videos(os.path.join(DATASET_PATH, 'Celeb-real'), label=0, max_videos=num_videos)
+real_spatial, real_motion, real_geometric, real_labels = process_videos(os.path.join(DATASET_PATH, 'Celeb-real'), label=0, max_videos=num_videos)
 print("Extracting features from fake videos")
-fake_spatial, fake_temporal, fake_labels = process_videos(os.path.join(DATASET_PATH, 'Celeb-synthesis'), label=1, max_videos=num_videos)
+fake_spatial, fake_motion, fake_geometric, fake_labels = process_videos(os.path.join(DATASET_PATH, 'Celeb-synthesis'), label=1, max_videos=num_videos)
 
 # Combine and save features
 all_spatial = np.array(real_spatial + fake_spatial)
-all_temporal = np.array(real_temporal + fake_temporal)
+all_motion = np.array(real_motion + fake_motion)
+all_geometric = np.array(real_geometric + fake_geometric)
 all_labels = np.array(real_labels + fake_labels)
 
 with open(os.path.join(FEATURES_PATH, 'spatial_features.pkl'), 'wb') as f:
     pickle.dump((all_spatial, all_labels), f)
 
-with open(os.path.join(FEATURES_PATH, 'temporal_features.pkl'), 'wb') as f:
-    pickle.dump((all_temporal, all_labels), f)
+with open(os.path.join(FEATURES_PATH, 'motion_features.pkl'), 'wb') as f:
+    pickle.dump((all_motion, all_labels), f)
 
-print("Feature extraction complete. Saved to 'features/spatial_features.pkl'.")
+with open(os.path.join(FEATURES_PATH, 'geometric_features.pkl'), 'wb') as f:
+    pickle.dump((all_geometric, all_labels), f)
+
+print("Feature extraction complete. Saved to 'features/spatial_features.pkl', 'features/motion_features.pkl', and 'features/geometric_features.pkl'.")

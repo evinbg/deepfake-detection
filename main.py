@@ -1,8 +1,8 @@
 import os
 import cv2
 import numpy as np
-from tensorflow.keras.applications import VGG16 # VGG16 model for spatial feature extraction
-from tensorflow.keras.applications.vgg16 import preprocess_input
+from tensorflow.keras.applications import Xception # Xception model for spatial feature extraction
+from tensorflow.keras.applications.xception import preprocess_input
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.models import Model
 from mtcnn import MTCNN # MTCNN for face detection
@@ -20,9 +20,9 @@ os.makedirs(FEATURES_PATH, exist_ok=True)
 CROPPED_FACES_PATH = 'cropped_faces/'
 os.makedirs(CROPPED_FACES_PATH, exist_ok=True)
 
-# Load VGG16 model for spatial feature extraction
-base_model = VGG16(weights='imagenet')
-model = Model(inputs=base_model.input, outputs=base_model.get_layer('fc1').output)
+# Load Xception model for spatial feature extraction
+base_model = Xception(weights='imagenet', include_top=False, pooling='avg')
+model = Model(inputs=base_model.input, outputs=base_model.output)
 
 # Initialize MTCNN for face detection
 detector = MTCNN()
@@ -40,13 +40,21 @@ def extract_frames(video_path, num_frames=frames_to_extract):
     cap = cv2.VideoCapture(video_path)
     frames = []
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    interval = max(1, frame_count // num_frames) # May want to change this to fixed interval
+    interval = 10
+    
+    if frame_count < 10:  # Handle videos with fewer than 10 frames
+        return 0
     
     for i in range(num_frames):
-        cap.set(cv2.CAP_PROP_POS_FRAMES, i * interval)
+        frame_idx = i * interval
+        if frame_idx >= frame_count:  # Stop if we exceed the total frame count
+            break
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
         if not ret:
             break
+        
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frames.append(frame)
     
@@ -70,9 +78,9 @@ def detect_and_crop_face(frame, video_file, frame_idx, padding=0.2):
         w = min(frame.shape[1] - x, w + 2 * pad_x)
         h = min(frame.shape[0] - y, h + 2 * pad_y)
 
-        # Crop and resize face
+        # Crop and resize face (299x299 for Xception)
         cropped_face = frame[y:y+h, x:x+w]
-        cropped_face = cv2.resize(cropped_face, (224, 224))
+        cropped_face = cv2.resize(cropped_face, (299, 299))
 
         # Save the cropped face image
         face_filename = f"{CROPPED_FACES_PATH}{video_file}_frame{frame_idx}.jpg"
@@ -84,7 +92,7 @@ def detect_and_crop_face(frame, video_file, frame_idx, padding=0.2):
 def extract_landmarks(cropped_face):
     """Extract facial landmarks using dlib."""
     gray_face = cv2.cvtColor(cropped_face, cv2.COLOR_RGB2GRAY)
-    rects = dlib.rectangle(0, 0, 224, 224)
+    rects = dlib.rectangle(0, 0, 299, 299)
     shape = predictor(gray_face, rects)
     landmarks = np.array([[p.x, p.y] for p in shape.parts()])
     return landmarks
@@ -94,7 +102,6 @@ def compute_geometric_features(landmarks):
     # Reshape flattened landmarks into (68, 2) array
     points = landmarks.reshape((68, 2))
     
-    # Example distances
     eye_distance = np.linalg.norm(points[36] - points[45])  # Eye corners
     mouth_width = np.linalg.norm(points[48] - points[54])   # Mouth corners
     nose_to_chin = np.linalg.norm(points[30] - points[8])   # Nose tip to chin
@@ -113,7 +120,7 @@ def compute_motion_vectors(landmarks_sequence):
     return np.array(motion_vectors)
 
 def extract_features(frames, video_file):
-    """Extract VGG16 spatial features and dlib landmarks for each cropped face."""
+    """Extract Xception spatial features and dlib landmarks for each cropped face."""
     spatial_features = []
     landmarks_sequence = []
     geometric_features = []
@@ -121,7 +128,7 @@ def extract_features(frames, video_file):
     for idx, frame in enumerate(frames):
         face = detect_and_crop_face(frame, video_file, idx)
         if face is not None:
-            # Extract VGG16 spatial features
+            # Extract spatial features
             x = image.img_to_array(face)
             x = np.expand_dims(x, axis=0)
             x = preprocess_input(x)

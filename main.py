@@ -5,6 +5,7 @@ from tensorflow.keras.applications import Xception # Xception model for spatial 
 from tensorflow.keras.applications.xception import preprocess_input
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout
 from mtcnn import MTCNN # MTCNN for face detection
 import dlib # dlib for facial landmark detection
 import pickle
@@ -22,7 +23,23 @@ os.makedirs(CROPPED_FACES_PATH, exist_ok=True)
 
 # Load Xception model for spatial feature extraction
 base_model = Xception(weights='imagenet', include_top=False, pooling='avg')
-model = Model(inputs=base_model.input, outputs=base_model.output)
+x = base_model.output
+
+# Add custom layers for fine-tuning
+x = Dense(512, activation='relu')(x)  # Add a fully connected layer
+x = Dropout(0.5)(x)  # Dropout for regularization
+x = Dense(1, activation='sigmoid')(x)  # Binary classification (real or fake)
+
+model = Model(inputs=base_model.input, outputs=x) # Final model
+
+# Freeze the base layers initially to retain the pre-trained weights
+for layer in base_model.layers:
+    layer.trainable = False
+
+# Compile the model
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+model.summary()
 
 # Initialize MTCNN for face detection
 detector = MTCNN()
@@ -200,3 +217,21 @@ with open(os.path.join(FEATURES_PATH, 'geometric_features.pkl'), 'wb') as f:
     pickle.dump((all_geometric, all_labels), f)
 
 print("Feature extraction complete. Saved to 'features/spatial_features.pkl', 'features/motion_features.pkl', and 'features/geometric_features.pkl'.")
+
+# Unfreeze some layers for fine-tuning
+for layer in base_model.layers[-20:]:  # Unfreeze the last 20 layers
+    layer.trainable = True
+
+# Recompile the model after unfreezing
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+# Fine-tune the model (train the model on dataset)
+history = model.fit(
+    all_spatial, all_labels,
+    epochs=10,
+    batch_size=32,
+    validation_split=0.2
+)
+
+# Save the fine-tuned model
+model.save('fine_tuned_xception.h5')

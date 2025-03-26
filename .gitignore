@@ -1,5 +1,5 @@
 /datasets/*
-/cropped_faces/*
+/processed_images/*
 !*.gitkeep
 .vscode/
 .ipynb_checkpoints/

@@ -6,8 +6,8 @@ import dlib # dlib for facial landmark detection
 import pickle
 
 # Global variables
-frames_to_extract = 10
-num_videos = 5
+frames_to_extract = 40
+num_videos = 100
 
 # Paths
 DATASET_PATH = 'datasets/celeb'
@@ -36,9 +36,9 @@ def extract_frames(video_path, num_frames=frames_to_extract):
     cap = cv2.VideoCapture(video_path)
     frames = []
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    interval = 10
+    interval = 3
     
-    if frame_count < 10: # Handle videos with fewer than 10 frames
+    if frame_count < 3: # Handle videos with fewer than 3 frames
         return 0
     
     for i in range(num_frames):
@@ -93,8 +93,8 @@ def detect_and_crop_face(frame, video_file, frame_idx, label):
         folder = FAKE_PATH
 
     # Save the cropped face image
-    face_filename = os.path.join(folder, f"{video_file}_frame{frame_idx}.jpg")
-    cv2.imwrite(face_filename, cv2.cvtColor(cropped_face, cv2.COLOR_RGB2BGR))
+    #face_filename = os.path.join(folder, f"{video_file}_frame{frame_idx}.jpg")
+    #cv2.imwrite(face_filename, cv2.cvtColor(cropped_face, cv2.COLOR_RGB2BGR))
 
     return cropped_face
 
@@ -184,7 +184,7 @@ def process_videos(video_dir, label, max_videos):
         print(f"Processing {video_file}...")
         
         frames = extract_frames(video_path)
-        if len(frames) < 10:
+        if len(frames) < 40:
             print(f"Skipping {video_file}, not enough frames.")
             continue
         

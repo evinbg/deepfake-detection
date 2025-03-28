@@ -7,7 +7,7 @@ import pickle
 
 # Global variables
 frames_to_extract = 40
-num_videos = 100
+num_videos = 590
 
 # Paths
 DATASET_PATH = 'datasets/celeb'

@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pickle
+from torchinfo import summary
 
 class PositionalEncoding(nn.Module):
     """
@@ -36,12 +37,12 @@ class MotionTransformer(nn.Module):
     Transformer-based model for classification of videos (real vs. fake) 
     using motion-delta features.
     
-    Input shape: (batch_size, seq_len=40, feature_dim=138)
+    Input shape: (batch_size, seq_len=40, feature_dim=136)
     Output: Probability distribution over 2 classes: [Real, Fake].
     """
     def __init__(
         self,
-        feature_dim=138,   # dimension of motion-delta features per frame
+        feature_dim=136,   # dimension of motion-delta features per frame
         d_model=128,       # internal embedding dimension used by the Transformer
         nhead=4,           # number of attention heads
         num_layers=2,      # number of Transformer encoder layers
@@ -106,19 +107,19 @@ class MotionDataset(Dataset):
     Dataset wrapping for motion-delta features. The data is typically loaded from
     motion_features.pkl, which is assumed to store (all_motion, all_labels).
 
-    all_motion shape might be: (num_samples, seq_len, feature_dim=138)
+    all_motion shape might be: (num_samples, seq_len, feature_dim=136)
     all_labels shape: (num_samples,)
     """
     def __init__(self, motion_data, labels):
         super(MotionDataset, self).__init__()
-        self.motion_data = motion_data  # shape: (N, 40, 138) for example
+        self.motion_data = motion_data  # shape: (N, 40, 136)
         self.labels = labels            # shape: (N,)
 
     def __len__(self):
         return len(self.motion_data)
 
     def __getitem__(self, idx):
-        x = self.motion_data[idx]  # shape: (40, 138)
+        x = self.motion_data[idx]  # shape: (40, 136)
         y = self.labels[idx]       # 0 or 1
         # Convert to torch tensors
         x = torch.tensor(x, dtype=torch.float32)
@@ -145,7 +146,7 @@ def train_transformer_model(
     # 1) Load data
     with open(motion_features_path, 'rb') as f:
         (all_motion, all_labels) = pickle.load(f)  
-        # all_motion.shape = (num_samples, seq_len=40, feature_dim=138)
+        # all_motion.shape = (num_samples, seq_len=40, feature_dim=136)
         # all_labels.shape = (num_samples,)
 
     # For simplicity, let's do a quick train/val split (80% train, 20% val)
@@ -175,7 +176,7 @@ def train_transformer_model(
         model.train()
         total_train_loss = 0.0
         for batch_x, batch_y in train_loader:
-            batch_x = batch_x.to(device)  # shape: (B, 40, 138)
+            batch_x = batch_x.to(device)  # shape: (B, 40, 136)
             batch_y = batch_y.to(device)  # shape: (B,)
 
             optimizer.zero_grad()
@@ -225,3 +226,6 @@ if __name__ == "__main__":
         device='cuda' if torch.cuda.is_available() else 'cpu'
     )
     # Now 'trained_model' can be used for inference or saved to disk.
+
+    # Layer by layer summary with shapes
+    summary(trained_model, input_size=(8, 40, 136))

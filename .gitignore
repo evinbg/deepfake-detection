@@ -1,5 +1,6 @@
 /datasets/*
 /processed_images/*
+/processed_images_selected/
 !*.gitkeep
 .vscode/
 .ipynb_checkpoints/

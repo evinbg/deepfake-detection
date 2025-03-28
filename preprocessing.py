@@ -4,10 +4,11 @@ import numpy as np
 from mtcnn import MTCNN # MTCNN for face detection
 import dlib # dlib for facial landmark detection
 import pickle
+import random
 
 # Global variables
-frames_to_extract = 10
-num_videos = 5
+frames_to_extract = 40
+num_videos = 590
 
 # Paths
 DATASET_PATH = 'datasets/celeb'
@@ -36,9 +37,10 @@ def extract_frames(video_path, num_frames=frames_to_extract):
     cap = cv2.VideoCapture(video_path)
     frames = []
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    interval = 10
+    interval = 3
     
-    if frame_count < 10: # Handle videos with fewer than 10 frames
+    if frame_count < (frames_to_extract * interval): # Handle videos with fewer than the required amount of frames
+        print(f"Skipping {video_path}, not enough frames.")
         return 0
     
     for i in range(num_frames):
@@ -55,7 +57,7 @@ def extract_frames(video_path, num_frames=frames_to_extract):
         frames.append(frame)
     
     cap.release()
-    return np.array(frames)
+    return np.array(frames) if frames else []
 
 def detect_and_crop_face(frame, video_file, frame_idx, label):
     """Detect and crop face using MTCNN."""
@@ -168,13 +170,17 @@ def extract_features(frames, video_file, label):
         motion_vectors = compute_motion_vectors(landmarks_sequence)
         return motion_vectors, np.array(geometric_features)
     else:
-        print(f"Skipping {video_file}: Not enough valid frames for feature extraction.")
+        #print(f"Skipping {video_file}: Not enough valid frames for feature extraction.")
         return None, None
 
 def process_videos(video_dir, label, max_videos):
     """Process videos to extract features and save them."""
     video_files = [f for f in os.listdir(video_dir) if f.endswith('.mp4')]
-    video_files = video_files[:max_videos]
+
+    if max_videos is not None:
+        # Randomly select num_amount of fake videos from the list
+        video_files = random.sample(video_files, min(len(video_files), max_videos))
+    
     motion_data = []
     geometric_data = []
     labels = []
@@ -184,8 +190,7 @@ def process_videos(video_dir, label, max_videos):
         print(f"Processing {video_file}...")
         
         frames = extract_frames(video_path)
-        if len(frames) < 10:
-            print(f"Skipping {video_file}, not enough frames.")
+        if not isinstance(frames, np.ndarray) or len(frames) < frames_to_extract:
             continue
         
         motion_vectors, geometric_features = extract_features(frames, video_file, label)

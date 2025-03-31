@@ -5,6 +5,13 @@ from mtcnn import MTCNN # MTCNN for face detection
 import dlib # dlib for facial landmark detection
 import pickle
 import random
+import tensorflow as tf
+import absl.logging
+
+
+tf.get_logger().setLevel('ERROR')  # Suppress detailed logs from TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
+absl.logging.set_verbosity(absl.logging.ERROR)
 
 # Global variables
 frames_to_extract = 40
@@ -28,7 +35,8 @@ detector = MTCNN()
 detector_dlib = dlib.get_frontal_face_detector()
 
 # Load dlib's pre-trained facial landmark predictor
-predictor_path = 'shape_predictor_68_face_landmarks.dat'
+#predictor_path = 'shape_predictor_68_face_landmarks.dat'
+predictor_path = '/Users/djamelalmabouada/Desktop/capstone_project/deepfake-detection/shape_predictor_68_face_landmarks.dat'
 predictor = dlib.shape_predictor(predictor_path)
 
 
@@ -95,8 +103,8 @@ def detect_and_crop_face(frame, video_file, frame_idx, label):
         folder = FAKE_PATH
 
     # Save the cropped face image
-    face_filename = os.path.join(folder, f"{video_file}_frame{frame_idx}.jpg")
-    cv2.imwrite(face_filename, cv2.cvtColor(cropped_face, cv2.COLOR_RGB2BGR))
+    #face_filename = os.path.join(folder, f"{video_file}_frame{frame_idx}.jpg")
+    #cv2.imwrite(face_filename, cv2.cvtColor(cropped_face, cv2.COLOR_RGB2BGR))
 
     return cropped_face
 
@@ -168,9 +176,10 @@ def extract_features(frames, video_file, label):
     if len(landmarks_sequence) == frames_to_extract:
         # Compute motion vectors if all frames have landmarks
         motion_vectors = compute_motion_vectors(landmarks_sequence)
+        #motion_vectors = []
         return motion_vectors, np.array(geometric_features)
     else:
-        #print(f"Skipping {video_file}: Not enough valid frames for feature extraction.")
+        print(f"Skipping {video_file}: Not enough valid frames for feature extraction.")
         return None, None
 
 def process_videos(video_dir, label, max_videos):

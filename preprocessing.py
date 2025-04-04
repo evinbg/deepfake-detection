@@ -28,7 +28,7 @@ detector = MTCNN()
 detector_dlib = dlib.get_frontal_face_detector()
 
 # Load dlib's pre-trained facial landmark predictor
-predictor_path = 'shape_predictor_68_face_landmarks.dat'
+predictor_path = '/Users/djamelalmabouada/Desktop/capstone_project/deepfake-detection/shape_predictor_68_face_landmarks.dat'
 predictor = dlib.shape_predictor(predictor_path)
 
 

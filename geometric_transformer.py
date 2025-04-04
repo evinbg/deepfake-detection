@@ -1,3 +1,8 @@
+"""
+Geometric Transformer for Deepfake Detection
+This script implements a Transformer-based model for deepfake detection using geometric features.
+"""
+
 import os
 import torch
 import torch.nn as nn
@@ -112,7 +117,7 @@ test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
 
 # 2. Define Transformer Encoder Model with Attention Pooling
 class TransformerEncoderClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_layers, num_heads, dropout=0.1):
+    def __init__(self, input_dim, hidden_dim, num_layers, num_heads, dropout=0.1):  # Fixed the dropout parameter
         super(TransformerEncoderClassifier, self).__init__()
         
         # Input embedding layer
@@ -135,10 +140,13 @@ class TransformerEncoderClassifier(nn.Module):
         self.attention = nn.Linear(hidden_dim, 1)
         self.softmax = nn.Softmax(dim=1)
         
-        # Classification head
-        self.fc = nn.Linear(hidden_dim, 1)
-        nn.init.constant_(self.fc.bias, -0.5)  # Bias initialization
-        self.sigmoid = nn.Sigmoid()
+        # Classification head sequentially 
+        self.classification_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),  # Linear (128 → 128)
+            nn.ReLU(),                          
+            nn.Dropout(dropout),                
+            nn.Linear(hidden_dim, 2)            # Linear (128 → 2)
+        )
         
     def forward(self, x):
         x = self.embedding(x)
@@ -150,8 +158,7 @@ class TransformerEncoderClassifier(nn.Module):
         x = torch.sum(x * attn_weights, dim=1)  # [batch_size, hidden_dim]
         
         # Classification
-        x = self.fc(x)
-        x = self.sigmoid(x)
+        x = self.classification_head(x)  # [batch_size, 2]
         return x
 
 # Hyperparameters
@@ -165,13 +172,14 @@ dropout = 0.2
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = TransformerEncoderClassifier(input_dim, hidden_dim, num_layers, num_heads, dropout).to(device)
 
-# Compute class weights for loss
+# Compute class weights for loss (for CrossEntropyLoss)
 class_counts = np.bincount(all_labels)
-class_weights = torch.tensor([2.0 / class_counts[0], 1.0 / class_counts[1]], device=device).float()
+class_weights = torch.tensor([1.0 / class_counts[0], 1.0 / class_counts[1]], device=device).float()
 class_weights = class_weights / class_weights.sum() * 2
 print(f"Class weights: {class_weights}")
 
-criterion = nn.BCELoss(reduction='none')
+# Use CrossEntropyLoss instead of BCELoss
+criterion = nn.CrossEntropyLoss(weight=class_weights)
 optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-5)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
 
@@ -182,16 +190,14 @@ for epoch in range(num_epochs):
     model.train()
     train_loss = 0.0
     for features, labels in train_loader:
-        features, labels = features.to(device), labels.to(device).float().view(-1, 1)
+        features, labels = features.to(device), labels.to(device).long()
         optimizer.zero_grad()
-        outputs = model(features)
-        loss = criterion(outputs, labels)
-        weights = class_weights[labels.long().view(-1, 1)]
-        weighted_loss = (loss * weights).mean()
-        weighted_loss.backward()
+        outputs = model(features)  # [batch_size, 2]
+        loss = criterion(outputs, labels)  # CrossEntropyLoss expects [batch_size, num_classes] and [batch_size]
+        loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
-        train_loss += loss.mean().item()
+        train_loss += loss.item()
 
     # Validation
     model.eval()
@@ -200,11 +206,11 @@ for epoch in range(num_epochs):
     total = 0
     with torch.no_grad():
         for features, labels in test_loader:
-            features, labels = features.to(device), labels.to(device).float().view(-1, 1)
-            outputs = model(features)
+            features, labels = features.to(device), labels.to(device).long()
+            outputs = model(features)  # [batch_size, 2]
             loss = criterion(outputs, labels)
-            val_loss += loss.mean().item()
-            predicted = (outputs >= 0.5).float()
+            val_loss += loss.item()
+            predicted = torch.argmax(outputs, dim=1)  # Get the predicted class by taking argmax
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 

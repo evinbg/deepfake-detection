@@ -164,7 +164,7 @@ class TransformerEncoderClassifier(nn.Module):
 # Hyperparameters
 input_dim = all_features.shape[-1]  # Should be 3 (geometric features only)
 hidden_dim = 128
-num_layers = 4
+num_layers = 2
 num_heads = 4
 dropout = 0.2
 

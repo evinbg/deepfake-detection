@@ -3,7 +3,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, BatchNormalization, Dropout
 from tensorflow.keras.regularizers import l2
 
-class SpatialXceptionTF:
+class SpatialXceptionFT:
     def __init__(self, input_shape=(299, 299, 3), l2_reg=0.0001):
         self.input_shape = input_shape
         self.l2_reg = l2_reg

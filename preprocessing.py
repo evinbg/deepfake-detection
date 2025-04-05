@@ -184,6 +184,7 @@ def process_videos(video_dir, label, max_videos):
     motion_data = []
     geometric_data = []
     labels = []
+    skipped_videos = 0 # Track skipped videos
     
     for video_file in video_files:
         video_path = os.path.join(video_dir, video_file)
@@ -191,6 +192,8 @@ def process_videos(video_dir, label, max_videos):
         
         frames = extract_frames(video_path)
         if not isinstance(frames, np.ndarray) or len(frames) < frames_to_extract:
+            print(f"Skipping {video_file}: Not enough valid frames.")
+            skipped_videos += 1
             continue
         
         motion_vectors, geometric_features = extract_features(frames, video_file, label)
@@ -198,15 +201,17 @@ def process_videos(video_dir, label, max_videos):
             motion_data.append(motion_vectors)
             geometric_data.append(geometric_features)
             labels.append(label)
+        else:
+            skipped_videos += 1
     
-    return motion_data, geometric_data, labels
+    return motion_data, geometric_data, labels, skipped_videos
 
 
 # Extract features for real and fake videos
 print("Extracting features from real videos")
-real_motion, real_geometric, real_labels = process_videos(os.path.join(DATASET_PATH, 'Celeb-real'), label=0, max_videos=num_videos)
+real_motion, real_geometric, real_labels, real_skipped = process_videos(os.path.join(DATASET_PATH, 'Celeb-real'), label=0, max_videos=num_videos)
 print("Extracting features from fake videos")
-fake_motion, fake_geometric, fake_labels = process_videos(os.path.join(DATASET_PATH, 'Celeb-synthesis'), label=1, max_videos=num_videos)
+fake_motion, fake_geometric, fake_labels, fake_skipped = process_videos(os.path.join(DATASET_PATH, 'Celeb-synthesis'), label=1, max_videos=num_videos)
 
 # Combine and save features
 all_motion = np.array(real_motion + fake_motion)
@@ -219,4 +224,6 @@ with open(os.path.join(FEATURES_PATH, 'motion_features.pkl'), 'wb') as f:
 with open(os.path.join(FEATURES_PATH, 'geometric_features.pkl'), 'wb') as f:
     pickle.dump((all_geometric, all_labels), f)
 
+print(f"Skipped real videos: {real_skipped}")
+print(f"Skipped fake videos: {fake_skipped}")
 print("Feature extraction complete. Saved to 'features/motion_features.pkl', and 'features/geometric_features.pkl'.")

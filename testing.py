@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 # Paths
 MODEL_PATH = 'fine_tuned_xception.h5'
-TEST_PATH = 'split_images/test'
+TEST_PATH = 'processed_images_new/test'
 IMG_SIZE = (299, 299)
 BATCH_SIZE = 32
 

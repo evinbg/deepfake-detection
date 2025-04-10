@@ -10,9 +10,9 @@ from tensorflow.keras.regularizers import l2
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 # Paths to split datasets
-TRAIN_PATH = 'split_images/train'
-VAL_PATH = 'split_images/val'
-TEST_PATH = 'split_images/test'
+TRAIN_PATH = 'processed_images_new/train'
+VAL_PATH = 'processed_images_new/val'
+TEST_PATH = 'processed_images_new/test'
 
 # Model parameters
 IMG_SIZE = (299, 299)
@@ -25,14 +25,14 @@ train_datagen = ImageDataGenerator(
     width_shift_range=0.1,
     height_shift_range=0.1,
     shear_range=0.1,
-    zoom_range=(0.1, 0.2),
+    zoom_range=(0.2, 0.25),
     brightness_range=[0.8, 1.2],
     horizontal_flip=True
 )
 
 val_test_datagen = ImageDataGenerator(
     preprocessing_function=tf.keras.applications.xception.preprocess_input,
-    zoom_range=(0.1, 0.11)
+    zoom_range=(0.2, 0.2)
 )
 
 # Load training data
@@ -72,9 +72,9 @@ for layer in base_model.layers:
 # Add custom classification layers
 x = base_model.output
 x = GlobalAveragePooling2D()(x)
-x = Dense(512, activation='relu', kernel_regularizer=l2(0.0001))(x)
+x = Dense(256, activation='relu', kernel_regularizer=l2(0.0001))(x)
 x = BatchNormalization()(x)
-x = Dropout(0.4)(x)
+x = Dropout(0.3)(x)
 output_layer = Dense(1, activation='sigmoid')(x)
 
 model = Model(inputs=base_model.input, outputs=output_layer) # Final model
@@ -89,7 +89,13 @@ model.compile(
 
 # Early stopping to prevent overtraining
 early_stopping = EarlyStopping(monitor='val_loss', patience=5, min_delta=0.001, restore_best_weights=True)
-lr_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6)
+lr_scheduler = ReduceLROnPlateau(
+    monitor='val_loss',
+    factor=0.2, 
+    patience=2, 
+    min_lr=1e-6,
+    verbose=1
+)
 
 # Train Model
 history = model.fit(
@@ -141,7 +147,7 @@ model, history2 = unfreeze_and_train(
     train_generator=train_generator, 
     val_generator=val_generator, 
     epochs=5, 
-    lr=0.00005
+    lr=0.00007
 )
 
 model.save('xception_stage2_unfreeze60.h5')

@@ -80,12 +80,14 @@ class PositionalEncoding(nn.Module):
         super(PositionalEncoding, self).__init__()
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model)
+        )
 
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
 
-        # Register pe as a buffer so it’s not trainable but still moves to GPU if needed
+        # Register pe as a buffer so it's not trainable but still moves to GPU if needed
         self.register_buffer('pe', pe.unsqueeze(0))  # shape = (1, max_len, d_model)
 
     def forward(self, x):
@@ -104,9 +106,9 @@ class PositionalEncoding(nn.Module):
 
 class MotionTransformer(nn.Module):
     """
-    Transformer-based model for classification of videos (real vs. fake) 
+    Transformer-based model for classification of videos (real vs. fake)
     using motion-delta features.
-    
+
     Input shape: (batch_size, seq_len=40, feature_dim=136)
     Output: Probability distribution over 2 classes: [Real, Fake].
 
@@ -117,11 +119,11 @@ class MotionTransformer(nn.Module):
     def __init__(
         self,
         feature_dim=136,   # dimension of motion-delta features per frame
-        d_model=128,       # internal embedding dimension used by the Transformer
-        nhead=4,           # number of attention heads
-        num_layers=2,      # number of Transformer encoder layers
-        dim_feedforward=256, 
-        dropout=0.1,
+        d_model=64,       # internal embedding dimension used by the Transformer
+        nhead=2,           # number of attention heads
+        num_layers=1,      # number of Transformer encoder layers
+        dim_feedforward=256,
+        dropout=0.5,
         num_classes=2
     ):
         super(MotionTransformer, self).__init__()
@@ -143,7 +145,9 @@ class MotionTransformer(nn.Module):
             dropout=dropout,
             batch_first=True
         )
-        self.transformer_encoder = TransformerEncoderWithAttn(encoder_layer, num_layers=num_layers)
+        self.transformer_encoder = TransformerEncoderWithAttn(
+            encoder_layer, num_layers=num_layers
+        )
 
         # 4) Classification head: we pool over the sequence dimension (e.g., average pooling)
         self.classifier = nn.Sequential(
@@ -167,7 +171,8 @@ class MotionTransformer(nn.Module):
         x = self.pos_encoder(x)   # (batch_size, seq_len, d_model)
 
         # 3) Pass through Transformer encoder (collect attention weights)
-        x, attn_maps_list = self.transformer_encoder(x)  # (batch_size, seq_len, d_model), [layer_1, ...]
+        x, attn_maps_list = self.transformer_encoder(x)
+        # x shape now: (batch_size, seq_len, d_model)
 
         # 4) Pool over the time dimension (seq_len). Here we do mean pooling.
         x = torch.mean(x, dim=1)  # (batch_size, d_model)
@@ -220,12 +225,15 @@ def train_transformer_model(
       2. Splits into train/val or train/test (as needed).
       3. Creates a DataLoader.
       4. Initializes and trains the transformer model.
-      5. Returns the trained model.
+      5. Produces training/validation curves.
+      6. Returns the trained model.
     """
 
     # 1) Load data
     with open(motion_features_path, 'rb') as f:
-        (all_motion, all_labels) = pickle.load(f)  
+        (all_motion, all_labels) = pickle.load(f)
+        print(all_motion.shape)
+        print(all_motion.dtype)
         # all_motion.shape = (num_samples, seq_len=40, feature_dim=136)
         # all_labels.shape = (num_samples,)
 
@@ -249,18 +257,23 @@ def train_transformer_model(
     model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+
+    # For plotting:
+    train_losses = []
+    val_losses = []
+    val_accuracies = []
 
     # 4) Training loop
     for epoch in range(num_epochs):
         model.train()
         total_train_loss = 0.0
         for batch_x, batch_y in train_loader:
-            batch_x = batch_x.to(device)  # shape: (B, 40, 136)
-            batch_y = batch_y.to(device)  # shape: (B,)
+            batch_x = batch_x.to(device)
+            batch_y = batch_y.to(device)
 
             optimizer.zero_grad()
-            logits, _ = model(batch_x)       # shape: (B, 2); we can ignore attention here
+            logits, _ = model(batch_x)
             loss = criterion(logits, batch_y)
             loss.backward()
             optimizer.step()
@@ -287,12 +300,40 @@ def train_transformer_model(
         avg_val_loss = total_val_loss / len(val_loader)
         val_accuracy = 100.0 * correct / len(val_dataset)
 
+        # Record metrics
+        train_losses.append(avg_train_loss)
+        val_losses.append(avg_val_loss)
+        val_accuracies.append(val_accuracy)
+
         print(f"[Epoch {epoch+1}/{num_epochs}] "
               f"Train Loss: {avg_train_loss:.4f}, "
               f"Val Loss: {avg_val_loss:.4f}, "
               f"Val Acc: {val_accuracy:.2f}%")
 
     print("Training complete.")
+
+    # 5) Produce plots (distinct figures for each plot)
+    epochs = range(1, num_epochs + 1)
+
+    # Plot train vs val loss
+    plt.figure()
+    plt.plot(epochs, train_losses, label="Train Loss")
+    plt.plot(epochs, val_losses, label="Val Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training and Validation Loss")
+    plt.legend()
+    plt.show()
+
+    # Plot val accuracy
+    plt.figure()
+    plt.plot(epochs, val_accuracies, label="Val Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy (%)")
+    plt.title("Validation Accuracy")
+    plt.legend()
+    plt.show()
+
     return model
 
 
@@ -304,8 +345,8 @@ def visualize_architecture(model, save_path="motion_transformer_graph"):
     """
     Creates a high-level architecture graph of the model using torchviz.
     """
-    # Create a small dummy input: batch=1, seq_len=40, feature_dim=136
-    dummy_input = torch.randn(1, 40, model.feature_dim)
+    # Create a small dummy input: batch=1, seq_len=39, feature_dim=136
+    dummy_input = torch.randn(1, 39, model.feature_dim)
     logits, attn_maps_list = model(dummy_input)
 
     # Use torchviz to create a graph
@@ -314,7 +355,7 @@ def visualize_architecture(model, save_path="motion_transformer_graph"):
     print(f"Architecture graph saved to {save_path}.png")
 
 
-def visualize_attention(model, device="cpu", num_frames=40):
+def visualize_attention(model, device="cpu", num_frames=39):
     """
     Runs a forward pass on dummy data and plots the attention matrix
     for each layer and head (on a single sample).
@@ -332,9 +373,9 @@ def visualize_attention(model, device="cpu", num_frames=40):
         n_heads = attn_map.shape[1]
         for head_idx in range(n_heads):
             # We'll plot the attention for the single sample
-            attention_matrix = attn_map[0, head_idx].detach().cpu().numpy()  # shape (seq_len, seq_len)
-            plt.figure(figsize=(5, 4))
-            plt.imshow(attention_matrix, aspect='auto', cmap='viridis')
+            attention_matrix = attn_map[0, head_idx].detach().cpu().numpy()
+            plt.figure()
+            plt.imshow(attention_matrix, aspect='auto')
             plt.colorbar()
             plt.title(f"Layer {layer_idx+1}, Head {head_idx+1} Attention")
             plt.xlabel("Key Frames")
@@ -350,16 +391,17 @@ if __name__ == "__main__":
     # Example usage:
     trained_model = train_transformer_model(
         motion_features_path='features/motion_features.pkl',
-        batch_size=10,
-        num_epochs=20,
+        batch_size=32,
+        num_epochs=100,
         learning_rate=1e-4,
         device='cuda' if torch.cuda.is_available() else 'cpu'
     )
-    # Summarize the layer-by-layer shapes and parameter counts
-    summary(trained_model, input_size=(10, 40, 136))
 
-    # Generate a high-level architecture graph
+    # Summarize the layer-by-layer shapes and parameter counts
+    summary(trained_model, input_size=(10, 39, 136))
+
+    # Optionally visualize model architecture
     #visualize_architecture(trained_model, save_path="motion_transformer_graph")
 
-    # Visualize attention weights from a single dummy sample
-    visualize_attention(trained_model, device='cuda' if torch.cuda.is_available() else 'cpu')
+    # Optionally visualize attention weights from a single dummy sample
+    #visualize_attention(trained_model, device='cuda' if torch.cuda.is_available() else 'cpu')

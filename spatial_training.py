@@ -83,12 +83,17 @@ model = Model(inputs=base_model.input, outputs=output_layer) # Final model
 
 model.compile(
     optimizer=Adam(learning_rate=0.001), 
-    loss='binary_crossentropy', 
+    loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.05), 
     metrics=['accuracy', tf.keras.metrics.AUC(), tf.keras.metrics.Precision()]
 )
 
-# Early stopping to prevent overtraining
-early_stopping = EarlyStopping(monitor='val_loss', patience=5, min_delta=0.001, restore_best_weights=True)
+# Early stopping and Learning rate scheduler to prevent overtraining
+early_stopping = EarlyStopping(
+    monitor='val_loss', 
+    patience=5, 
+    min_delta=0.001, 
+    restore_best_weights=True
+)
 lr_scheduler = ReduceLROnPlateau(
     monitor='val_loss',
     factor=0.2, 
@@ -109,12 +114,31 @@ history = model.fit(
 
 def unfreeze_and_train(model, num_layers_to_unfreeze, train_generator, val_generator, epochs, lr):
     """ Unfreezes 'num_layers_to_unfreeze' layers from the base model and retrains it. """
+    # Recreate scheduler and early stopping for a clean phase
+    early_stopping = EarlyStopping(
+        monitor='val_loss', 
+        patience=5, 
+        min_delta=0.001, 
+        restore_best_weights=True
+    )
+    lr_scheduler = ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.2, 
+        patience=2, 
+        min_lr=1e-6,
+        verbose=1
+    )
+
     # Unfreeze only the last 'num_layers_to_unfreeze' layers
     for layer in model.layers[-num_layers_to_unfreeze:]:
         layer.trainable = True
 
     # Compile with a lower learning rate for fine-tuning
-    model.compile(optimizer=Adam(learning_rate=lr), loss='binary_crossentropy', metrics=['accuracy', tf.keras.metrics.AUC(), tf.keras.metrics.Precision()])
+    model.compile(
+        optimizer=Adam(learning_rate=lr), 
+        loss = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.05), 
+        metrics=['accuracy', tf.keras.metrics.AUC(), tf.keras.metrics.Precision()]
+    )
 
     # Train again with unfrozen layers
     history_finetune = model.fit(
@@ -128,29 +152,29 @@ def unfreeze_and_train(model, num_layers_to_unfreeze, train_generator, val_gener
 
     return model, history_finetune
 
-# Unfreeze 30 layers -> Train
+# Unfreeze 20 layers -> Train
 model, history1 = unfreeze_and_train(
     model, 
-    num_layers_to_unfreeze=30, 
+    num_layers_to_unfreeze=20, 
     train_generator=train_generator, 
     val_generator=val_generator, 
-    epochs=5, 
+    epochs=10, 
     lr=0.0001
 )
 
-model.save('xception_stage1_unfreeze30.h5')
+model.save('xception_stage1_unfreeze20.h5')
 
-# Unfreeze 60 layers -> Train
+# Unfreeze 40 layers -> Train
 model, history2 = unfreeze_and_train(
     model, 
-    num_layers_to_unfreeze=60, 
+    num_layers_to_unfreeze=40, 
     train_generator=train_generator, 
     val_generator=val_generator, 
-    epochs=5, 
-    lr=0.00007
+    epochs=10, 
+    lr=0.00005
 )
 
-model.save('xception_stage2_unfreeze60.h5')
+model.save('xception_stage2_unfreeze40.h5')
 
 # # Unfreeze the entire model -> Train
 # model, history3 = unfreeze_and_train(model, num_layers_to_unfreeze=len(base_model.layers), train_generator=train_generator, val_generator=val_generator, epochs=5, lr=0.00001)
@@ -158,24 +182,24 @@ model.save('xception_stage2_unfreeze60.h5')
 # Save the fine-tuned model
 model.save('fine_tuned_xception.h5')
 
-test_metrics = model.evaluate(test_generator, return_dict=True)
-print(f"Test Accuracy: {test_metrics['accuracy']:.4f}")
+# test_metrics = model.evaluate(test_generator, return_dict=True)
+# print(f"Test Accuracy: {test_metrics['accuracy']:.4f}")
 
-# Get predictions and true labels
-pred_probs = model.predict(test_generator, verbose=1)  # Probabilities
-pred_labels = (pred_probs > 0.5).astype(int).flatten() # Binary classification
+# # Get predictions and true labels
+# pred_probs = model.predict(test_generator, verbose=1)  # Probabilities
+# pred_labels = (pred_probs > 0.5).astype(int).flatten() # Binary classification
 
-true_labels = test_generator.classes                   # Ground truth labels
-filenames = test_generator.filenames                   # Corresponding filenames
+# true_labels = test_generator.classes                   # Ground truth labels
+# filenames = test_generator.filenames                   # Corresponding filenames
 
-# Save to CSV
-results_df = pd.DataFrame({
-    'filename': filenames,
-    'true_label': true_labels,
-    'predicted_prob': pred_probs.flatten(),
-    'predicted_label': pred_labels
-})
+# # Save to CSV
+# results_df = pd.DataFrame({
+#     'filename': filenames,
+#     'true_label': true_labels,
+#     'predicted_prob': pred_probs.flatten(),
+#     'predicted_label': pred_labels
+# })
 
-results_df.to_csv('xception_test_predictions.csv', index=False)
+# results_df.to_csv('xception_test_predictions.csv', index=False)
 
-print("Predictions saved to xception_test_predictions.csv")
+# print("Predictions saved to xception_test_predictions.csv")

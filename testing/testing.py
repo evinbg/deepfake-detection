@@ -8,7 +8,7 @@ from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 
 # Paths
-MODEL_PATH = 'fine_tuned_xception.h5'
+MODEL_PATH = 'xception_stage1_unfreeze20.h5'
 TEST_PATH = 'processed_images_new/test'
 IMG_SIZE = (299, 299)
 BATCH_SIZE = 32
@@ -19,7 +19,7 @@ model = load_model(MODEL_PATH)
 # Preprocessing for test set
 test_datagen = ImageDataGenerator(
     preprocessing_function=tf.keras.applications.xception.preprocess_input,
-    zoom_range=(0.1, 0.1)
+    zoom_range=(0.2, 0.2)
 )
 
 test_generator = test_datagen.flow_from_directory(

@@ -6,7 +6,4 @@
 !*.gitkeep
 .vscode/
 .ipynb_checkpoints/
-fine_tuned_xception.h5
-xception_stage1_unfreeze30.h5
-xception_stage2_unfreeze60.h5
-xception_test_predictions.csv
+/ignore

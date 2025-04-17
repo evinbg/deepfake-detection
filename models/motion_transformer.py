@@ -128,16 +128,16 @@ class MotionTransformer(nn.Module):
 
     def __init__(
         self,
-        *,
-        feature_dim: int = 136,
-        d_model: int = 64,
-        nhead: int = 2,
-        num_layers: int = 1,
-        dim_feedforward: int = 256,
-        dropout: float = 0.5,
-        num_classes: int = 2,
-    ) -> None:
-        super().__init__()
+        feature_dim=136,     # dimension of motion-delta features per frame
+        d_model=128,         # internal embedding dimension used by the Transformer
+        nhead=4,             # number of attention heads
+        num_layers=2,        # number of Transformer encoder layers
+        dim_feedforward=256, 
+        dropout=0.1,
+        num_classes=2
+    ):
+        super(MotionTransformer, self).__init__()
+
         self.feature_dim = feature_dim
 
         # ---- Input projection -------------------------------------------
@@ -159,14 +159,29 @@ class MotionTransformer(nn.Module):
             nn.Linear(d_model, d_model),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
-            nn.Linear(d_model, num_classes),
+            nn.Linear(d_model, num_classes)
         )
 
-    # ------------------------------------------------------------------
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:  # (B, S, F)
-        x = self.input_linear(x)          # (B, S, D)
-        x = self.pos_encoder(x)
-        x, attn = self.transformer_encoder(x)  # (B, S, D), list[L]
-        x = torch.mean(x, dim=1)         # mean pooling over S → (B, D)
-        logits = self.classifier(x)       # (B, C)
-        return logits, attn
+    def forward(self, x):
+        """
+        x shape: (batch_size, seq_len, feature_dim)
+        Returns:
+          - logits of shape (batch_size, num_classes)
+          - attn_maps_list: list of shape (num_layers, batch_size, n_heads, seq_len, seq_len)
+        """
+        # 1) Project input to d_model
+        x = self.input_linear(x) # (batch_size, seq_len, d_model)
+
+        # 2) Add positional encoding
+        x = self.pos_encoder(x) # (batch_size, seq_len, d_model)
+
+        # 3) Pass through Transformer encoder (collect attention weights)
+        x, attn_maps_list = self.transformer_encoder(x) # (batch_size, seq_len, d_model), [layer_1, ...]
+
+        # 4) Pool over the time dimension (seq_len). Here we do mean pooling.
+        x = torch.mean(x, dim=1) # (batch_size, d_model)
+
+        # 5) Classification head
+        logits = self.classifier(x) # (batch_size, num_classes)
+
+        return logits, attn_maps_list

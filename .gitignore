@@ -3,8 +3,9 @@
 /processed_images_selected/*
 /processed_images_new/*
 /split_images/*
+/ignore
 /outputs/fine_tuned_xception.h5
 !*.gitkeep
+.DS_Store
 .vscode/
 .ipynb_checkpoints/
-/ignore

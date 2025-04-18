@@ -10,7 +10,7 @@
 
 ## Prerequisites 
 
-## Instalation 
+## Installation 
 
 ## Usage 
 

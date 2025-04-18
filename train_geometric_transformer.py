@@ -126,7 +126,7 @@ model = TransformerEncoderClassifier(input_dim, hidden_dim, num_layers, num_head
 class_weights_loss = torch.tensor([1.0 / class_counts[0], 1.0 / class_counts[1]], device=device).float()
 class_weights_loss = class_weights_loss / class_weights_loss.sum() * 2
 criterion = nn.CrossEntropyLoss(weight=class_weights_loss)
-optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
+optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-9)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True)
 
 # 3. Evaluation Function

@@ -1,3 +1,8 @@
+"""
+Training script for Geometric Transformer for Deepfake Detection
+This script loads data, preprocesses it, and trains the Transformer model.
+"""
+
 import os
 import torch
 import torch.nn as nn

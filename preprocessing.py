@@ -20,7 +20,7 @@ video_id_map = []
 # Paths
 DATASET_PATH = 'datasets/celeb'
 FEATURES_PATH = 'features/'
-PROCESSED_IMAGES_PATH = 'processed_images_new/'
+PROCESSED_IMAGES_PATH = 'processed_images/'
 
 REAL_PATH = os.path.join(PROCESSED_IMAGES_PATH, 'real')
 FAKE_PATH = os.path.join(PROCESSED_IMAGES_PATH, 'fake')

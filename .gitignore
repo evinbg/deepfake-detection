@@ -2,6 +2,7 @@
 /processed_images/*
 /processed_images_selected/*
 /processed_images_new/*
+/processed_images_old/*
 /split_images/*
 /ignore
 /outputs/fine_tuned_xception.h5

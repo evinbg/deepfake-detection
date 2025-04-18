@@ -7,9 +7,9 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from models.spatial_model import SpatialXceptionFT
 
 # Paths
-TRAIN_PATH = 'processed_images_new/train'
-VAL_PATH = 'processed_images_new/val'
-TEST_PATH = 'processed_images_new/test'
+TRAIN_PATH = '../processed_images_new/train'
+VAL_PATH = '../processed_images_new/val'
+TEST_PATH = '../processed_images_new/test'
 IMG_SIZE = (299, 299)
 BATCH_SIZE = 32
 

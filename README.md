@@ -1,6 +1,6 @@
 # Deepfake-detection
 
-## Contributers
+## Contributors
 
 ## Short description
 

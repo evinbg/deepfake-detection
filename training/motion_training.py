@@ -20,7 +20,7 @@ from torchinfo import summary
 from torchviz import make_dot
 
 # Import the model implementation that lives in the sibling file
-from motion_transformer import MotionTransformer
+from models.motion_transformer import MotionTransformer
 
 __all__ = [
     "MotionDataset",

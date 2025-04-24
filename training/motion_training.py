@@ -6,7 +6,9 @@ MotionTransformer defined in *motion_transformer.py*.
 
 from __future__ import annotations
 
+import argparse
 import pickle
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -16,11 +18,15 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-from torchinfo import summary
-from torchviz import make_dot
 
-# Import the model implementation
-from models.motion_transformer import MotionTransformer
+# ---------------------------------------------------------------------
+# 0) Import the model (relative import keeps the package structure clear)
+# ---------------------------------------------------------------------
+try:
+    from ..models.motion_transformer import MotionTransformer   # when run as a module
+except ImportError:                                             # fallback for direct call
+    sys.path.append(str(Path(__file__).resolve().parents[1] / "models"))
+    from motion_transformer import MotionTransformer            # type: ignore
 
 __all__ = [
     "MotionDataset",
@@ -29,11 +35,9 @@ __all__ = [
     "visualize_attention",
 ]
 
-
-#######################################################################
+# ---------------------------------------------------------------------
 # 1) Dataset wrapper
-#######################################################################
-
+# ---------------------------------------------------------------------
 class MotionDataset(Dataset):
     """Thin ``torch.utils.data.Dataset`` around a tensor / ndarray pair."""
 
@@ -45,7 +49,6 @@ class MotionDataset(Dataset):
         self.motion = motion.astype(np.float32)
         self.labels = np.asarray(labels, dtype=np.int64)
 
-    # ------------------------------------------------------------------
     def __len__(self) -> int:  # type: ignore[override]
         return len(self.motion)
 
@@ -55,154 +58,112 @@ class MotionDataset(Dataset):
         return x, y
 
 
-#######################################################################
+# ---------------------------------------------------------------------
 # 2) Training routine
-#######################################################################
-
+# ---------------------------------------------------------------------
 def train_transformer_model(
-    motion_features_path: str | Path,
+    motion_features_path: Path,
     *,
     batch_size: int = 32,
     num_epochs: int = 50,
     learning_rate: float = 1e-4,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ) -> MotionTransformer:
-    """Convenience function that trains ``MotionTransformer`` on the feature
-    file saved by the preprocessing pipeline.  The pickle must contain a
-    tuple ``(all_motion, all_labels)`` where:
+    """Train ``MotionTransformer`` on a pickled feature file."""
+    if not motion_features_path.exists():
+        raise FileNotFoundError(motion_features_path)
 
-    * ``all_motion`` → ndarray (N, 40, 136)
-    * ``all_labels`` → ndarray (N,)
-    """
-
-    # ---- 1) Load data --------------------------------------------------
-    motion_path = Path(motion_features_path)
-    if not motion_path.exists():
-        raise FileNotFoundError(motion_path)
-    with motion_path.open("rb") as f:
+    with motion_features_path.open("rb") as f:
         all_motion, all_labels = pickle.load(f)
 
-    num_samples = len(all_motion)
-    split_idx = int(0.8 * num_samples)
-    train_data = MotionDataset(all_motion[:split_idx], all_labels[:split_idx])
-    val_data = MotionDataset(all_motion[split_idx:], all_labels[split_idx:])
+    split_idx = int(0.8 * len(all_motion))
+    train_loader = DataLoader(
+        MotionDataset(all_motion[:split_idx], all_labels[:split_idx]),
+        batch_size=batch_size, shuffle=True
+    )
+    val_loader = DataLoader(
+        MotionDataset(all_motion[split_idx:], all_labels[split_idx:]),
+        batch_size=batch_size, shuffle=False
+    )
 
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
-
-    # ---- 2) Initialize model / optim / loss ---------------------------
     model = MotionTransformer(feature_dim=all_motion.shape[2]).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-5)
 
     train_losses, val_losses, val_accs = [], [], []
 
-    # ---- 3) Epoch loop -------------------------------------------------
     for epoch in range(1, num_epochs + 1):
-        model.train()
-        running_loss = 0.0
+        # -------- Training ----------
+        model.train(); running_loss = 0.0
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
             logits, _ = model(x)
             loss = criterion(logits, y)
-            loss.backward()
-            optimizer.step()
+            loss.backward(); optimizer.step()
             running_loss += loss.item()
 
-        # ---- Validation ---------------------------------------------
-        model.eval()
-        val_loss, correct = 0.0, 0
+        # -------- Validation --------
+        model.eval(); val_loss = correct = 0
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device)
                 logits, _ = model(x)
-                loss = criterion(logits, y)
-                val_loss += loss.item()
-                correct += (logits.argmax(dim=1) == y).sum().item()
+                val_loss += criterion(logits, y).item()
+                correct += (logits.argmax(1) == y).sum().item()
 
         train_losses.append(running_loss / len(train_loader))
         val_losses.append(val_loss / len(val_loader))
-        val_accs.append(100.0 * correct / len(val_data))
+        val_accs.append(100 * correct / len(val_loader.dataset))
 
-        print(
-            f"[Epoch {epoch:3d}/{num_epochs}] "
-            f"Train Loss: {train_losses[-1]:.4f} | "
-            f"Val Loss: {val_losses[-1]:.4f} | "
-            f"Val Acc:  {val_accs[-1]:.2f}%",
-        )
+        print(f"[{epoch:3d}/{num_epochs}] "
+              f"Train {train_losses[-1]:.4f} | "
+              f"Val {val_losses[-1]:.4f} | "
+              f"Acc {val_accs[-1]:.2f}%")
 
-    # ---- 4) Plot curves -----------------------------------------------
     _plot_training_curves(train_losses, val_losses, val_accs)
-    print("Training complete.")
     return model
 
 
 def _plot_training_curves(train_l, val_l, val_a):
     epochs = range(1, len(train_l) + 1)
-    plt.figure()
-    plt.plot(epochs, train_l, label="Train Loss")
-    plt.plot(epochs, val_l, label="Val Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title("Training vs Validation Loss")
-    plt.legend()
+    plt.figure(); plt.plot(epochs, train_l, label="Train"); plt.plot(epochs, val_l, label="Val")
+    plt.xlabel("Epoch"); plt.ylabel("Loss"); plt.title("Loss"); plt.legend()
 
-    plt.figure()
-    plt.plot(epochs, val_a, label="Val Accuracy")
-    plt.xlabel("Epoch")
-    plt.ylabel("Accuracy (%)")
-    plt.title("Validation Accuracy")
-    plt.legend()
+    plt.figure(); plt.plot(epochs, val_a)
+    plt.xlabel("Epoch"); plt.ylabel("Accuracy (%)"); plt.title("Validation Accuracy")
     plt.show()
 
 
-#######################################################################
-# 3) Visualisation helpers
-#######################################################################
-
-def visualize_architecture(model: MotionTransformer, save_path: str = "motion_transformer_graph") -> None:
-    """Save a *torchviz* graph of the model."""
-    dummy = torch.randn(1, 39, model.feature_dim)
-    logits, _ = model(dummy)
-    graph = make_dot(logits, params=dict(model.named_parameters()))
-    graph.render(save_path, format="png")
-    print(f"Architecture graph saved to {save_path}.png")
-
-
-def visualize_attention(model: MotionTransformer, device: str = "cpu", num_frames: int = 39) -> None:
-    model.eval()
-    dummy = torch.randn(1, num_frames, model.feature_dim).to(device)
-    with torch.no_grad():
-        _, attn_maps = model(dummy)
-
-    for layer_idx, attn in enumerate(attn_maps):
-        n_heads = attn.shape[1]
-        for head_idx in range(n_heads):
-            plt.figure()
-            plt.imshow(attn[0, head_idx].cpu(), aspect="auto")
-            plt.colorbar()
-            plt.title(f"Layer {layer_idx + 1}, Head {head_idx + 1} Attention")
-            plt.xlabel("Key Frames")
-            plt.ylabel("Query Frames")
-            plt.show()
-
-
-#######################################################################
-# 4) Entry point
-#######################################################################
-
+# ---------------------------------------------------------------------
+# 3) Entry point with argparse
+# ---------------------------------------------------------------------
 if __name__ == "__main__":
-    trained = train_transformer_model(
-        motion_features_path="features/motion_features.pkl",
-        batch_size=32,
-        num_epochs=100,
-        learning_rate=1e-4,
+    ROOT = Path(__file__).resolve().parents[1]          # Capstone/
+    DEFAULT_PKL = ROOT / "features" / "motion_features.pkl"
+
+    parser = argparse.ArgumentParser(
+        description="Train MotionTransformer on motion-delta features."
+    )
+    parser.add_argument(
+        "--features", type=Path, default=DEFAULT_PKL,
+        help=f"Path to pickled features (default: {DEFAULT_PKL})"
+    )
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--epochs",     type=int, default=100)
+    parser.add_argument("--lr",         type=float, default=1e-4)
+    args = parser.parse_args()
+
+    model = train_transformer_model(
+        motion_features_path=args.features,
+        batch_size=args.batch_size,
+        num_epochs=args.epochs,
+        learning_rate=args.lr,
     )
 
-    # Print a layer‑by‑layer summary
-    summary(trained, input_size=(10, 39, 136))
-
-    # Example visualisations (comment out if not required)
-    # visualize_architecture(trained)
-    # visualize_attention(trained, device="cuda" if torch.cuda.is_available() else "cpu")
+    # Optional: torchinfo summary if installed
+    try:
+        from torchinfo import summary
+        summary(model, input_size=(10, 39, 136))
+    except ImportError:
+        pass

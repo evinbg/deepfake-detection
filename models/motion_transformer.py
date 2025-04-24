@@ -130,10 +130,10 @@ class MotionTransformer(nn.Module):
         self,
         feature_dim=136,     # dimension of motion-delta features per frame
         d_model=128,         # internal embedding dimension used by the Transformer
-        nhead=4,             # number of attention heads
-        num_layers=2,        # number of Transformer encoder layers
+        nhead=2,             # number of attention heads
+        num_layers=1,        # number of Transformer encoder layers
         dim_feedforward=256, 
-        dropout=0.1,
+        dropout=0.5,
         num_classes=2
     ):
         super(MotionTransformer, self).__init__()

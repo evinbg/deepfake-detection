@@ -1,7 +1,7 @@
 """motion_training.py
 -----------------------------------------------------------------
-Handles data loading, training, evaluation, and visualization for the
-MotionTransformer defined in *motion_transformer.py*.
+Handles data loading, training, evaluation, visualisation, and
+persistence for the MotionTransformer defined in *motion_transformer.py*.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import pickle
 import sys
 from pathlib import Path
 from typing import Sequence
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -59,8 +60,23 @@ class MotionDataset(Dataset):
 
 
 # ---------------------------------------------------------------------
-# 2) Training routine
+# 2) Utility: model saver
 # ---------------------------------------------------------------------
+
+def _save_model(model: nn.Module, out_dir: Path, prefix: str = "motion_transformer") -> Path:
+    """Save *state_dict* to *out_dir/prefix_YYYYmmdd_HHMMSS.pth* and return the path."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_path = out_dir / f"{prefix}_{timestamp}.pth"
+    torch.save(model.state_dict(), save_path)
+    print(f"Model weights saved to {save_path}")
+    return save_path
+
+
+# ---------------------------------------------------------------------
+# 3) Training routine
+# ---------------------------------------------------------------------
+
 def train_transformer_model(
     motion_features_path: Path,
     *,
@@ -68,11 +84,15 @@ def train_transformer_model(
     num_epochs: int = 50,
     learning_rate: float = 1e-4,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    save_dir: Path | None = None,
 ) -> MotionTransformer:
-    """Train ``MotionTransformer`` on a pickled feature file."""
+    """Train ``MotionTransformer`` on a pickled feature file and optionally save it."""
     if not motion_features_path.exists():
         raise FileNotFoundError(motion_features_path)
 
+    # -----------------------------------------------------------------
+    # 1) Load data
+    # -----------------------------------------------------------------
     with motion_features_path.open("rb") as f:
         all_motion, all_labels = pickle.load(f)
 
@@ -86,12 +106,18 @@ def train_transformer_model(
         batch_size=batch_size, shuffle=False
     )
 
+    # -----------------------------------------------------------------
+    # 2) Model / loss / optimiser
+    # -----------------------------------------------------------------
     model = MotionTransformer(feature_dim=all_motion.shape[2]).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-5)
 
     train_losses, val_losses, val_accs = [], [], []
 
+    # -----------------------------------------------------------------
+    # 3) Epoch loop
+    # -----------------------------------------------------------------
     for epoch in range(1, num_epochs + 1):
         # -------- Training ----------
         model.train(); running_loss = 0.0
@@ -121,7 +147,14 @@ def train_transformer_model(
               f"Val {val_losses[-1]:.4f} | "
               f"Acc {val_accs[-1]:.2f}%")
 
+    # -----------------------------------------------------------------
+    # 4) Curves & saving
+    # -----------------------------------------------------------------
     _plot_training_curves(train_losses, val_losses, val_accs)
+
+    if save_dir is not None:
+        _save_model(model, save_dir)
+
     return model
 
 
@@ -136,19 +169,19 @@ def _plot_training_curves(train_l, val_l, val_a):
 
 
 # ---------------------------------------------------------------------
-# 3) Entry point with argparse
+# 4) Entry point with argparse
 # ---------------------------------------------------------------------
 if __name__ == "__main__":
     ROOT = Path(__file__).resolve().parents[1]          # Capstone/
     DEFAULT_PKL = ROOT / "features" / "motion_features.pkl"
+    DEFAULT_SAVE = ROOT / "saved_models"
 
     parser = argparse.ArgumentParser(
-        description="Train MotionTransformer on motion-delta features."
-    )
-    parser.add_argument(
-        "--features", type=Path, default=DEFAULT_PKL,
-        help=f"Path to pickled features (default: {DEFAULT_PKL})"
-    )
+        description="Train MotionTransformer on motion-delta features and save the model.")
+    parser.add_argument("--features", type=Path, default=DEFAULT_PKL,
+                        help=f"Path to pickled features (default: {DEFAULT_PKL})")
+    parser.add_argument("--save-dir", type=Path, default=DEFAULT_SAVE,
+                        help=f"Directory to place *.pth files (default: {DEFAULT_SAVE})")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--epochs",     type=int, default=100)
     parser.add_argument("--lr",         type=float, default=1e-4)
@@ -159,6 +192,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         num_epochs=args.epochs,
         learning_rate=args.lr,
+        save_dir=args.save_dir,
     )
 
     # Optional: torchinfo summary if installed

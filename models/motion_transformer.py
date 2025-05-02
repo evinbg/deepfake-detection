@@ -19,10 +19,7 @@ __all__ = [
 ]
 
 
-#######################################################################
 # 1) Custom Transformer encoder layer that exposes self‑attention maps
-#######################################################################
-
 class TransformerEncoderLayerWithAttn(nn.TransformerEncoderLayer):
     """Identical to ``nn.TransformerEncoderLayer`` but also returns the
     per‑head attention weights produced by *self_attn*.
@@ -53,10 +50,7 @@ class TransformerEncoderLayerWithAttn(nn.TransformerEncoderLayer):
         return src, attn_weights  # shape: (B, n_heads, S, S)
 
 
-#######################################################################
 # 2) Encoder wrapper that stacks the above layer and gathers attention
-#######################################################################
-
 class TransformerEncoderWithAttn(nn.Module):
     """Container for *num_layers* ``TransformerEncoderLayerWithAttn`` that
     returns a list with the attention maps from every layer.
@@ -80,10 +74,7 @@ class TransformerEncoderWithAttn(nn.Module):
         return out, attn_maps
 
 
-#######################################################################
-# 3) Sinusoidal positional encoding (unchanged from original script)
-#######################################################################
-
+# 3) Sinusoidal positional encoding
 class PositionalEncoding(nn.Module):
     """Adds sinusoidal position information to a batch of embeddings."""
 
@@ -100,10 +91,7 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:, : x.size(1)]
 
 
-#######################################################################
 # 4) Main model
-#######################################################################
-
 class MotionTransformer(nn.Module):
     """Transformer that classifies a sequence of motion‑delta vectors as
     **real (0)** or **fake (1)** and optionally returns all attention maps.
@@ -130,8 +118,8 @@ class MotionTransformer(nn.Module):
         self,
         feature_dim=136,     # dimension of motion-delta features per frame
         d_model=128,         # internal embedding dimension used by the Transformer
-        nhead=4,             # number of attention heads
-        num_layers=2,        # number of Transformer encoder layers
+        nhead=8,             # number of attention heads
+        num_layers=4,        # number of Transformer encoder layers
         dim_feedforward=256, 
         dropout=0.1,
         num_classes=2

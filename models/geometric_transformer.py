@@ -1,8 +1,3 @@
-"""
-Geometric Transformer for Deepfake Detection
-This script implements a Transformer-based model for deepfake detection using geometric features.
-"""
-
 import os
 import torch
 import torch.nn as nn
@@ -156,8 +151,8 @@ class TransformerEncoderClassifier(nn.Module):
 
 # Hyperparameters
 input_dim = all_features.shape[-1]
-hidden_dim = 128
-num_layers = 4
+hidden_dim = 192
+num_layers = 3
 num_heads = 4
 dropout = 0.2
 

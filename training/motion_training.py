@@ -1,5 +1,4 @@
-"""motion_training.py
------------------------------------------------------------------
+"""
 Handles data loading, training, evaluation, and visualization for the
 MotionTransformer defined in *motion_transformer.py*.
 """
@@ -10,6 +9,8 @@ import pickle
 from pathlib import Path
 from typing import Sequence
 
+import sys
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -20,6 +21,7 @@ from torchinfo import summary
 from torchviz import make_dot
 
 # Import the model implementation
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.motion_transformer import MotionTransformer
 
 __all__ = [
@@ -30,10 +32,7 @@ __all__ = [
 ]
 
 
-#######################################################################
-# 1) Dataset wrapper
-#######################################################################
-
+# Dataset wrapper
 class MotionDataset(Dataset):
     """Thin ``torch.utils.data.Dataset`` around a tensor / ndarray pair."""
 
@@ -55,10 +54,7 @@ class MotionDataset(Dataset):
         return x, y
 
 
-#######################################################################
-# 2) Training routine
-#######################################################################
-
+# Training routine
 def train_transformer_model(
     motion_features_path: str | Path,
     *,
@@ -75,7 +71,7 @@ def train_transformer_model(
     * ``all_labels`` → ndarray (N,)
     """
 
-    # ---- 1) Load data --------------------------------------------------
+    # 1) Load data 
     motion_path = Path(motion_features_path)
     if not motion_path.exists():
         raise FileNotFoundError(motion_path)
@@ -90,14 +86,14 @@ def train_transformer_model(
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
 
-    # ---- 2) Initialize model / optim / loss ---------------------------
+    # 2) Initialize model / optim / loss
     model = MotionTransformer(feature_dim=all_motion.shape[2]).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-5)
 
     train_losses, val_losses, val_accs = [], [], []
 
-    # ---- 3) Epoch loop -------------------------------------------------
+    # 3) Epoch loop
     for epoch in range(1, num_epochs + 1):
         model.train()
         running_loss = 0.0
@@ -110,29 +106,46 @@ def train_transformer_model(
             optimizer.step()
             running_loss += loss.item()
 
-        # ---- Validation ---------------------------------------------
+        # Train accuracy
+        train_correct = 0
+        train_total = 0
         model.eval()
-        val_loss, correct = 0.0, 0
+        with torch.no_grad():
+            for x, y in train_loader:
+                x, y = x.to(device), y.to(device)
+                logits, _ = model(x)
+                preds = logits.argmax(dim=1)
+                train_correct += (preds == y).sum().item()
+                train_total += y.size(0)
+        train_acc = 100.0 * train_correct / train_total
+
+        # Validation
+        val_loss, val_correct = 0.0, 0
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device)
                 logits, _ = model(x)
                 loss = criterion(logits, y)
                 val_loss += loss.item()
-                correct += (logits.argmax(dim=1) == y).sum().item()
+                val_correct += (logits.argmax(dim=1) == y).sum().item()
 
         train_losses.append(running_loss / len(train_loader))
         val_losses.append(val_loss / len(val_loader))
-        val_accs.append(100.0 * correct / len(val_data))
+        val_accs.append(100.0 * val_correct / len(val_data))
 
         print(
             f"[Epoch {epoch:3d}/{num_epochs}] "
             f"Train Loss: {train_losses[-1]:.4f} | "
+            f"Train Acc:  {train_acc:.2f}% | "
             f"Val Loss: {val_losses[-1]:.4f} | "
             f"Val Acc:  {val_accs[-1]:.2f}%",
         )
 
-    # ---- 4) Plot curves -----------------------------------------------
+    save_path = "outputs/motion_transformer_last_epoch.pth"
+    torch.save(model.state_dict(), save_path)
+    print(f"Model saved to {save_path}")
+
+    # 4) Plot curves
     _plot_training_curves(train_losses, val_losses, val_accs)
     print("Training complete.")
     return model
@@ -157,10 +170,7 @@ def _plot_training_curves(train_l, val_l, val_a):
     plt.show()
 
 
-#######################################################################
-# 3) Visualisation helpers
-#######################################################################
-
+# Visualisation helpers
 def visualize_architecture(model: MotionTransformer, save_path: str = "motion_transformer_graph") -> None:
     """Save a *torchviz* graph of the model."""
     dummy = torch.randn(1, 39, model.feature_dim)
@@ -188,14 +198,11 @@ def visualize_attention(model: MotionTransformer, device: str = "cpu", num_frame
             plt.show()
 
 
-#######################################################################
-# 4) Entry point
-#######################################################################
-
+# Entry point
 if __name__ == "__main__":
     trained = train_transformer_model(
         motion_features_path="features/motion_features.pkl",
-        batch_size=32,
+        batch_size=64,
         num_epochs=100,
         learning_rate=1e-4,
     )
@@ -203,6 +210,5 @@ if __name__ == "__main__":
     # Print a layer‑by‑layer summary
     summary(trained, input_size=(10, 39, 136))
 
-    # Example visualisations (comment out if not required)
     # visualize_architecture(trained)
     # visualize_attention(trained, device="cuda" if torch.cuda.is_available() else "cpu")
